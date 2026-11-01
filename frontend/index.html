@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tamper-Evident Blockchain Audit Trail</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header class="navbar">
+        <div class="brand-container">
+            <span class="brand-tag">SECURE_AUDIT</span>
+            <h1>Blockchain-Style Database Audit Trail</h1>
+        </div>
+        <button id="btn-verify" class="btn btn-primary">Run Integrity Verification</button>
+    </header>
+
+    <div class="container">
+        <!-- Verification Banner -->
+        <section id="verification-banner" class="banner banner-neutral">
+            <div class="banner-icon" id="banner-icon">ℹ</div>
+            <div class="banner-content">
+                <h3 id="banner-title">Chain Verification Ready</h3>
+                <p id="banner-desc">Click 'Run Integrity Verification' to traverse and validate SHA-256 blocks against Genesis.</p>
+            </div>
+        </section>
+
+        <div class="grid-layout">
+            <!-- Student Entry Form -->
+            <section class="card">
+                <h2>Insert Student Record</h2>
+                <p class="subtitle">Triggers automatic SHA-256 block creation & hash-linking</p>
+                <form id="student-form">
+                    <div class="form-group">
+                        <label for="student_id">Student ID</label>
+                        <input type="number" id="student_id" required placeholder="e.g. 104">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="first_name">First Name</label>
+                            <input type="text" id="first_name" required placeholder="First name">
+                        </div>
+                        <div class="form-group">
+                            <label for="last_name">Last Name</label>
+                            <input type="text" id="last_name" required placeholder="Last name">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Institutional Email</label>
+                        <input type="email" id="email" required placeholder="name@vit.edu">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="department">Department</label>
+                            <input type="text" id="department" required value="AI and DS">
+                        </div>
+                        <div class="form-group">
+                            <label for="cgpa">CGPA (0 - 10)</label>
+                            <input type="number" step="0.01" min="0" max="10" id="cgpa" required value="9.20">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="fee_status">Fee Status</label>
+                        <select id="fee_status">
+                            <option value="PAID">PAID</option>
+                            <option value="PENDING" selected>PENDING</option>
+                            <option value="OVERDUE">OVERDUE</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-success full-width" style="margin-top: 0.5rem;">Add Student & Mine Block</button>
+                </form>
+            </section>
+
+            <!-- Student Records Table -->
+            <section class="card">
+                <div class="card-header">
+                    <div>
+                        <h2>Live Student Records</h2>
+                        <p class="subtitle" style="margin-bottom:0;">Rows actively stored in STUDENT_RECORDS</p>
+                    </div>
+                    <button id="btn-refresh-students" class="btn btn-sm btn-outline">Refresh</button>
+                </div>
+                <div class="table-responsive">
+                    <table id="students-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Dept</th>
+                                <th>CGPA</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <!-- Blockchain Ledger Section -->
+        <section class="card">
+            <div class="card-header">
+                <div>
+                    <h2>Cryptographic Audit Ledger (AUDIT_LOG)</h2>
+                    <p class="subtitle" style="margin-bottom:0;">Append-only SHA-256 hash chain anchored to Genesis Block 0</p>
+                </div>
+                <div class="btn-group">
+                    <button id="btn-refresh-ledger" class="btn btn-sm btn-outline">Refresh Ledger</button>
+                    <button id="btn-reset-chain" class="btn btn-sm btn-outline" style="color: #047857; border-color: #a7f3d0;">Reset / Clean Chain</button>
+                    <button id="btn-simulate-tamper" class="btn btn-sm btn-danger">Simulate Direct DB Tampering</button>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table id="ledger-table">
+                    <thead>
+                        <tr>
+                            <th>Block #</th>
+                            <th>Action</th>
+                            <th>Target PK</th>
+                            <th>Previous Hash (PREV_HASH)</th>
+                            <th>Current Block Hash (RECORD_HASH)</th>
+                            <th>Session User</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script src="/js/main.js"></script>
+</body>
+</html>
