@@ -3,7 +3,13 @@
 -- Description: Oracle Table for Admin & Student Authentication (Sign In, Sign Up, Forgot Password)
 -- ====================================================================
 
-BEGIN EXECUTE IMMEDIATE 'DROP TABLE SYSTEM_USERS CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN NULL; END;
+SET DEFINE OFF;
+
+BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE SYSTEM_USERS CASCADE CONSTRAINTS PURGE';
+EXCEPTION
+    WHEN OTHERS THEN NULL;
+END;
 /
 
 CREATE TABLE SYSTEM_USERS (
@@ -18,15 +24,20 @@ CREATE TABLE SYSTEM_USERS (
 
 -- Seed Default Admin & Existing Students
 INSERT INTO SYSTEM_USERS (FULL_NAME, EMAIL, PASSWORD, ROLE, STUDENT_REF, DEPARTMENT)
-VALUES ('Academic System Admin', 'admin@vit.edu', 'admin123', 'ADMIN', NULL, 'Examination & Records');
+VALUES ('Academic System Admin', 'admin@vit.edu', 'admin123', 'ADMIN', NULL, 'Examination and Records');
 
 INSERT INTO SYSTEM_USERS (FULL_NAME, EMAIL, PASSWORD, ROLE, STUDENT_REF, DEPARTMENT)
-VALUES ('Vedant Joshi', 'vedant@vit.edu', 'student123', 'STUDENT', 101, 'AI and DS');
+VALUES ('Vedant Joshi', 'vedant@vit.edu', 'student123', 'STUDENT', 101, 'CS');
 
 INSERT INTO SYSTEM_USERS (FULL_NAME, EMAIL, PASSWORD, ROLE, STUDENT_REF, DEPARTMENT)
 VALUES ('Kalyani Dudhale', 'kalyani@vit.edu', 'student123', 'STUDENT', 102, 'AI and DS');
 
 INSERT INTO SYSTEM_USERS (FULL_NAME, EMAIL, PASSWORD, ROLE, STUDENT_REF, DEPARTMENT)
-VALUES ('Vaishnavi Giri', 'vaishnavi@vit.edu', 'student123', 'STUDENT', 103, 'AI and DS');
+VALUES ('Vaishnavi Giri', 'vaishnavi@vit.edu', 'student123', 'STUDENT', 103, 'AI');
+
+INSERT INTO SYSTEM_USERS (FULL_NAME, EMAIL, PASSWORD, ROLE, STUDENT_REF, DEPARTMENT)
+VALUES ('Sneha Kale', 'sneha@vit.edu', 'student123', 'STUDENT', 104, 'AI and DS');
 
 COMMIT;
+
+SELECT USER_ID, FULL_NAME, EMAIL, ROLE, STUDENT_REF, DEPARTMENT FROM SYSTEM_USERS ORDER BY USER_ID;

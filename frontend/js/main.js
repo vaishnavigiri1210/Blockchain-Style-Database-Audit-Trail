@@ -396,7 +396,15 @@ async function runIntegrityCheck() {
         const res = await fetch("/api/verify-chain");
         const json = await res.json();
 
-        if (json.success && json.verification.status === "VALID") {
+        if (!json.success || !json.verification) {
+            banner.className = "banner banner-broken";
+            icon.innerText = "⚠";
+            title.innerText = "Verification Error";
+            desc.innerText = json.error || "Unable to read verification response from server.";
+            return;
+        }
+
+        if (json.verification.status === "VALID") {
             banner.className = "banner banner-valid";
             icon.innerText = "✓";
             title.innerText = "CHAIN INTEGRITY VALID (100% Intact)";
@@ -409,6 +417,7 @@ async function runIntegrityCheck() {
         }
     } catch (err) {
         banner.className = "banner banner-broken";
+        icon.innerText = "⚠";
         title.innerText = "Verification Failed";
         desc.innerText = err.message;
     }

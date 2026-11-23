@@ -248,7 +248,7 @@ def add_student():
                     attacker = f"{user['name']} ({user['email']})"
                     cursor.execute("""
                         UPDATE AUDIT_LOG
-                        SET NEW_DATA = NEW_DATA || '|TAMPERED_BY=' || :1,
+                        SET NEW_DATA = SUBSTR(NVL(NEW_DATA, ''), 1, 300) || '|TAMPERED_BY=' || :1,
                             RECORD_HASH = 'TAMPERED_' || SUBSTR(RECORD_HASH, 10)
                         WHERE AUDIT_ID = :2
                     """, (attacker, latest_id))
@@ -274,7 +274,6 @@ def update_student(student_id):
         with get_connection() as conn:
             with conn.cursor() as cursor:
                 if user["role"] == "ADMIN":
-                    # AUTHORIZED: Update STUDENT_RECORDS & let PL/SQL trigger chain a valid SHA-256 block
                     cursor.execute("""
                         UPDATE STUDENT_RECORDS
                         SET FIRST_NAME = :1,
@@ -297,18 +296,18 @@ def update_student(student_id):
                     conn.commit()
                     return jsonify({"success": True, "tampered": False, "message": f"Student #{student_id} updated cleanly."})
                 else:
-                    # UNAUTHORIZED (STUDENT): Do NOT update STUDENT_RECORDS! Flag tamper in AUDIT_LOG for Admin
-                    cursor.execute("SELECT MAX(AUDIT_ID) FROM AUDIT_LOG WHERE RECORD_PK = :1", (str(student_id),))
+                    cursor.execute("SELECT MAX(AUDIT_ID) FROM AUDIT_LOG WHERE TRIM(RECORD_PK) = :1", (str(student_id),))
                     target_audit_id = cursor.fetchone()[0]
                     if not target_audit_id:
-                        return jsonify({"success": False, "error": "No audit block found for this student."}), 404
+                        cursor.execute("SELECT MAX(AUDIT_ID) FROM AUDIT_LOG")
+                        target_audit_id = cursor.fetchone()[0]
 
                     attacker = f"{user['name']} ({user['email']})"
                     tamper_payload = f"BLOCKED_UNAUTHORIZED_EDIT[CGPA={data['cgpa']},FEE={data['fee_status']}]|TAMPERED_BY={attacker}"
 
                     cursor.execute("""
                         UPDATE AUDIT_LOG
-                        SET NEW_DATA = NEW_DATA || '|' || :1,
+                        SET NEW_DATA = SUBSTR(NVL(NEW_DATA, ''), 1, 300) || '|' || :1,
                             RECORD_HASH = 'TAMPERED_' || SUBSTR(RECORD_HASH, 10)
                         WHERE AUDIT_ID = :2
                     """, (tamper_payload, target_audit_id))
@@ -330,23 +329,22 @@ def delete_student(student_id):
         with get_connection() as conn:
             with conn.cursor() as cursor:
                 if user["role"] == "ADMIN":
-                    # AUTHORIZED: Delete from STUDENT_RECORDS & log valid SHA-256 block
                     cursor.execute("DELETE FROM STUDENT_RECORDS WHERE STUDENT_ID = :1", (student_id,))
                     conn.commit()
                     return jsonify({"success": True, "tampered": False, "message": f"Student #{student_id} deleted cleanly."})
                 else:
-                    # UNAUTHORIZED (STUDENT): Do NOT delete from STUDENT_RECORDS! Flag tamper in AUDIT_LOG for Admin
-                    cursor.execute("SELECT MAX(AUDIT_ID) FROM AUDIT_LOG WHERE RECORD_PK = :1", (str(student_id),))
+                    cursor.execute("SELECT MAX(AUDIT_ID) FROM AUDIT_LOG WHERE TRIM(RECORD_PK) = :1", (str(student_id),))
                     target_audit_id = cursor.fetchone()[0]
                     if not target_audit_id:
-                        return jsonify({"success": False, "error": "No audit block found for this student."}), 404
+                        cursor.execute("SELECT MAX(AUDIT_ID) FROM AUDIT_LOG")
+                        target_audit_id = cursor.fetchone()[0]
 
                     attacker = f"{user['name']} ({user['email']})"
                     tamper_payload = f"BLOCKED_UNAUTHORIZED_DELETE|TAMPERED_BY={attacker}"
 
                     cursor.execute("""
                         UPDATE AUDIT_LOG
-                        SET NEW_DATA = NEW_DATA || '|' || :1,
+                        SET NEW_DATA = SUBSTR(NVL(NEW_DATA, ''), 1, 300) || '|' || :1,
                             RECORD_HASH = 'TAMPERED_' || SUBSTR(RECORD_HASH, 10)
                         WHERE AUDIT_ID = :2
                     """, (tamper_payload, target_audit_id))
@@ -390,6 +388,40 @@ def verify_chain():
     try:
         with get_connection() as conn:
             with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT MAX(AUDIT_ID) FROM AUDIT_LOG WHERE RECORD_HASH LIKE 'TAMPERED_%'
+                """)
+                latest_tampered = cursor.fetchone()[0]
+
+                if latest_tampered:
+                    cursor.execute("""
+                        SELECT RECORD_PK, CHANGED_BY, NEW_DATA, CHANGED_AT
+                        FROM AUDIT_LOG
+                        WHERE AUDIT_ID = :1
+                    """, (latest_tampered,))
+                    b_row = cursor.fetchone()
+                    rec_pk = b_row[0]
+                    db_user = b_row[1]
+                    new_data_str = b_row[2].read() if hasattr(b_row[2], "read") else str(b_row[2])
+                    changed_time = str(b_row[3])
+
+                    target_record = f"Block #{int(latest_tampered)} (Student ID #{rec_pk})"
+                    if "TAMPERED_BY=" in new_data_str:
+                        culprit = new_data_str.split("TAMPERED_BY=")[-1].split("|")[0]
+                    else:
+                        culprit = f"Direct DB Privilege User ({db_user})"
+
+                    return jsonify({
+                        "success": True,
+                        "verification": {
+                            "status": "TAMPERED_RECORD",
+                            "broken_audit_id": latest_tampered,
+                            "culprit": culprit,
+                            "target_record": target_record,
+                            "message": f"Hash mismatch at {target_record} — Tampered By: {culprit} (at {changed_time})"
+                        }
+                    })
+
                 status_var = cursor.var(oracledb.DB_TYPE_VARCHAR, size=50)
                 broken_id_var = cursor.var(oracledb.DB_TYPE_NUMBER)
                 error_msg_var = cursor.var(oracledb.DB_TYPE_VARCHAR, size=4000)
@@ -402,46 +434,28 @@ def verify_chain():
                 culprit = None
                 target_record = None
 
-                # Always surface the LATEST tampered block if multiple tampered blocks exist
-                cursor.execute("""
-                    SELECT MAX(AUDIT_ID) FROM AUDIT_LOG WHERE RECORD_HASH LIKE 'TAMPERED_%'
-                """)
-                latest_tampered = cursor.fetchone()[0]
-                if latest_tampered:
-                    broken_id = latest_tampered
-                    status = "TAMPERED_RECORD"
-
                 if broken_id:
                     cursor.execute("""
-                        SELECT RECORD_PK, CHANGED_BY, NEW_DATA, TO_CHAR(CHANGED_AT, 'YYYY-MM-DD HH24:MI:SS')
+                        SELECT RECORD_PK, CHANGED_BY, CHANGED_AT
                         FROM AUDIT_LOG
                         WHERE AUDIT_ID = :1
                     """, (broken_id,))
                     b_row = cursor.fetchone()
                     if b_row:
-                        rec_pk = b_row[0]
-                        db_user = b_row[1]
-                        new_data_str = b_row[2].read() if hasattr(b_row[2], "read") else str(b_row[2])
-                        changed_time = b_row[3]
+                        target_record = f"Block #{int(broken_id)} (Student ID #{b_row[0]})"
+                        culprit = f"Direct DB Privilege User ({b_row[1]})"
+                        message = f"Hash mismatch at {target_record} — Tampered By: {culprit} (at {str(b_row[2])})"
 
-                        target_record = f"Block #{int(broken_id)} (Student ID #{rec_pk})"
-                        if "TAMPERED_BY=" in new_data_str:
-                            culprit = new_data_str.split("TAMPERED_BY=")[-1].split("|")[0]
-                        else:
-                            culprit = f"Direct DB Privilege User ({db_user})"
-
-                        message = (
-                            f"Hash mismatch at {target_record} — Tampered By: {culprit} (at {changed_time})"
-                        )
-
-                result = {
-                    "status": status,
-                    "broken_audit_id": broken_id,
-                    "culprit": culprit,
-                    "target_record": target_record,
-                    "message": message
-                }
-        return jsonify({"success": True, "verification": result})
+                return jsonify({
+                    "success": True,
+                    "verification": {
+                        "status": status,
+                        "broken_audit_id": broken_id,
+                        "culprit": culprit,
+                        "target_record": target_record,
+                        "message": message
+                    }
+                })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
