@@ -1,90 +1,127 @@
-```markdown
+<div align="center">
+
 # Blockchain-Style Tamper-Evident Audit Trail Using Database Triggers
 
-A relational database security prototype that embeds **blockchain-style cryptographic hash chaining** directly inside **Oracle PL/SQL triggers**, eliminating the need for an external distributed ledger platform. Every `INSERT`, `UPDATE`, and `DELETE` operation on sensitive student records is automatically sealed into an append-only `AUDIT_LOG` table using `SYS.DBMS_CRYPTO` (SHA-256) and linked sequentially via `PREV_HASH` and `RECORD_HASH`.
+**Cryptographic Hash-Chaining & Real-Time Tamper Attribution inside Oracle PL/SQL**
+
+![Oracle DB](https://img.shields.io/badge/Oracle_Database-21c_%2F_23ai-F80000?style=for-the-badge&logo=oracle&logoColor=white)
+![PL/SQL](https://img.shields.io/badge/PL%2FSQL-DBMS__CRYPTO_SHA--256-CC2927?style=for-the-badge)
+![Python](https://img.shields.io/badge/Python-3.x-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-REST_API-000000?style=for-the-badge&logo=flask&logoColor=white)
+
+</div>
+
+---
+
+## Overview
+
+Traditional database audit logs can be silently altered or deleted by privileged insiders or compromised application accounts without leaving cryptographic proof. 
+
+This project embeds **blockchain-style cryptographic hash chaining** directly inside **Oracle PL/SQL triggers**, removing the overhead of external distributed ledgers. Every `INSERT`, `UPDATE`, and `DELETE` operation on `STUDENT_RECORDS` is intercepted at the database kernel level, sealed with a **SHA-256** digest via `SYS.DBMS_CRYPTO`, and linked sequentially to the previous block (`PREV_HASH` $\rightarrow$ `RECORD_HASH`).
+
+---
+
+## System Architecture & Cryptographic Flow
+
+```text
+  [ Admin / Student UI ] 
+           │
+           ▼  (HTTP / REST API)
+  [ Flask Backend (app.py) ]
+           │
+           ▼  (DML: INSERT / UPDATE / DELETE on STUDENT_RECORDS)
+┌──────────────────────────────────────────────────────────────────────┐
+│  ORACLE DATABASE ENGINE                                              │
+│                                                                      │
+│  1. BEFORE DML Trigger (TRG_STUDENT_RECORDS_AUDIT)                   │
+│     ├─ Locks AUDIT_METADATA (SELECT ... FOR UPDATE) for concurrency  │
+│     ├─ Fetches LAST_HASH (Genesis: 0000...0000)                      │
+│     └─ Computes RECORD_HASH = SHA256(ID | OP | PAYLOAD | PREV_HASH)  │
+│                                                                      │
+│  2. Append-Only Ledger (AUDIT_LOG)                                   │
+│     └─ Stores immutable block history (OLD_DATA → NEW_DATA)          │
+│                                                                      │
+│  3. Verification Engine (VERIFY_AUDIT_CHAIN Procedure)               │
+│     └─ Traverses Block #1 → N, recomputes hashes & flags tampering   │
+└──────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Key Features
 
-- **Native In-Database Hash Chaining:** A `BEFORE INSERT OR UPDATE OR DELETE` trigger (`TRG_STUDENT_RECORDS_AUDIT`) intercepts every DML operation on `STUDENT_RECORDS` and computes a deterministic SHA-256 digest combining the canonical record payload, operation metadata, monotonic sequence ID (`AUDIT_LOG_SEQ`), and the previous block's hash (`PREV_HASH`).
-- **Concurrency-Safe Block Ordering:** Uses a single-row anchor lock (`AUDIT_METADATA` with `SELECT ... FOR UPDATE`) to serialize concurrent writes and prevent forked blocks.
-- **Mathematical Tamper Detection (`VERIFY_AUDIT_CHAIN`):** A stored PL/SQL verification procedure traverses the entire audit ledger from Genesis (`0000...0000`), recomputes each block's SHA-256 hash, and flags any modified payload (`TAMPERED_RECORD`) or broken link (`BROKEN_LINK`).
-- **2-Role Authentication & Attribution:**
-  - **System Admin (`admin@vit.edu`):** Performs authorized `INSERT`, `UPDATE`, and `DELETE` operations that maintain a valid, intact SHA-256 chain.
-  - **Student Portal (Sign Up / Sign In / Forgot Password):** Newly registered students are added to `SYSTEM_USERS` and `STUDENT_RECORDS`. Any unauthorized edit or deletion attempt by a student breaks the cryptographic chain, triggering a real-time **Tamper Detected** alert with full actor and block attribution.
-
----
-
-## Technology Stack
-
-- **Database Engine:** Oracle Database 23ai / 21c (`PL/SQL`, `SYS.DBMS_CRYPTO`, Triggers, Sequences, Stored Procedures)
-- **Backend:** Python 3.x, Flask, `oracledb`
-- **Frontend:** HTML5, CSS3, Vanilla JavaScript
+| Feature | Technical Implementation |
+| :--- | :--- |
+| **In-Database SHA-256 Chaining** | `TRG_STUDENT_RECORDS_AUDIT` uses `SYS.DBMS_CRYPTO.HASH` (`HASH_SH256`) to seal every record change before commit. |
+| **Concurrency Serialization** | Single-row anchor locking on `AUDIT_METADATA` (`FOR UPDATE`) prevents race conditions and forked chain blocks. |
+| **Deterministic Chain Verification** | Stored procedure `VERIFY_AUDIT_CHAIN` validates every block from Genesis (`0000...0000`), pinpointing `TAMPERED_RECORD` or `BROKEN_LINK` errors. |
+| **Role-Based Access & Attribution** | **Admin** performs authorized DML operations (valid green chain). **Students** can Sign Up, Sign In, or Reset Password; any unauthorized edit/delete breaks the SHA-256 chain and exposes the exact actor and block ID. |
 
 ---
 
 ## Project Structure
 
 ```text
-Blockchain-Style Tamper-Evident Audit Trail/
+Blockchain-Style-Tamper-Evident-Audit-Trail/
 ├── backend/
-│   ├── app.py                      # Flask REST API, session auth & tamper attribution
-│   ├── db_config.py                # Oracle DB connection configuration
-│   └── test_connection.py          # Database connectivity verification script
+│   ├── app.py                        # Flask REST API, session auth & tamper attribution
+│   ├── db_config.py                  # Oracle DB connection credentials & pool config
+│   └── test_connection.py            # Standalone Oracle connectivity check
 ├── database/
 │   ├── schema/
-│   │   ├── 01_setup_user.sql       # Creates SECURE_AUDIT_ADMIN & grants DBMS_CRYPTO
-│   │   ├── 02_schema_design.sql    # Creates STUDENT_RECORDS, AUDIT_LOG, AUDIT_METADATA & sequence
-│   │   └── 07_users_setup.sql      # Creates SYSTEM_USERS for Admin & Student authentication
+│   │   ├── 01_setup_user.sql         # Creates SECURE_AUDIT_ADMIN & grants DBMS_CRYPTO
+│   │   ├── 02_schema_design.sql      # Creates STUDENT_RECORDS, AUDIT_LOG, AUDIT_METADATA & SEQ
+│   │   └── 07_users_setup.sql        # Creates SYSTEM_USERS for Admin & Student accounts
 │   ├── triggers/
-│   │   └── 03_audit_trigger.sql    # PL/SQL trigger implementing SHA-256 hash chaining
+│   │   └── 03_audit_trigger.sql      # PL/SQL trigger implementing SHA-256 hash chaining
 │   ├── procedures/
-│   │   └── 05_verify_integrity.sql # PL/SQL chain traversal & tamper verification procedure
+│   │   └── 05_verify_integrity.sql   # PL/SQL chain traversal & verification procedure
 │   └── tests/
-│       ├── 04_test_hash_chain.sql
-│       └── 06_test_verification.sql
+│       ├── 04_test_hash_chain.sql    # SQL test cases for valid block generation
+│       └── 06_test_verification.sql  # SQL test cases for tamper detection
 ├── frontend/
 │   ├── css/
-│   │   └── style.css               # Clean dashboard & alert styling
+│   │   └── style.css                 # Responsive dashboard & integrity alert styling
 │   ├── js/
-│   │   └── main.js                 # Auth flows, CRUD handlers & live chain verification
-│   └── index.html                  # Unified Admin & Student portal UI
+│   │   └── main.js                   # Auth flows, CRUD handlers & live verification UI
+│   └── index.html                    # Unified Admin & Student workspace
 ├── requirements.txt
 └── README.md
 ```
 
 ---
 
-## Setup & Execution Guide
+## Setup & Installation
 
-### 1. Database Initialization (Oracle)
-Connect to your Oracle instance and execute the SQL scripts in order:
-1. Run `database/schema/01_setup_user.sql` (as `SYS` / `SYSTEM`) to create the `SECURE_AUDIT_ADMIN` user and grant `EXECUTE ON SYS.DBMS_CRYPTO`.
-2. Connect as `SECURE_AUDIT_ADMIN` and run:
-   - `database/schema/02_schema_design.sql`
-   - `database/triggers/03_audit_trigger.sql`
-   - `database/procedures/05_verify_integrity.sql`
-   - `database/schema/07_users_setup.sql`
+### Step 1: Initialize Oracle Database Objects
+Execute the SQL scripts in sequential order using SQL Developer, VS Code Oracle Extension, or `sqlplus`:
 
-### 2. Backend Environment Setup
-Create and activate a Python virtual environment, then install dependencies:
+1. **As `SYS` / `SYSTEM`:**
+   ```sql
+   @database/schema/01_setup_user.sql
+   ```
+2. **As `SECURE_AUDIT_ADMIN`:**
+   ```sql
+   @database/schema/02_schema_design.sql
+   @database/triggers/03_audit_trigger.sql
+   @database/procedures/05_verify_integrity.sql
+   @database/schema/07_users_setup.sql
+   ```
+
+### Step 2: Configure & Run the Flask Backend
+Create a Python virtual environment, install dependencies, and start the server:
 
 ```powershell
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-
-Verify your Oracle credentials in `backend/db_config.py`, then start the Flask server:
-
-```powershell
 python backend/app.py
 ```
 
-### 3. Access the Application
-Open your browser and navigate to:
+> **Note:** Update your Oracle username, password, and DSN inside `backend/db_config.py` before starting the server.
 
+### Step 3: Launch the Web Interface
+Open your browser and visit:
 ```text
 [http://127.0.0.1:5000](http://127.0.0.1:5000)
 ```
@@ -93,15 +130,9 @@ Open your browser and navigate to:
 
 ## Demonstration Workflow
 
-1. **Authorized Admin Operations:**
-   - Sign in with **`admin@vit.edu`** / **`admin123`**.
-   - Insert, edit, or delete student records. Each action triggers `TRG_STUDENT_RECORDS_AUDIT` to append a valid SHA-256 block.
-   - Click **Verify Integrity** — the status banner confirms **`CHAIN INTEGRITY VALID (100% Intact)`**.
-2. **Student Registration & Unauthorized Tamper Test:**
-   - Sign out and use **Sign Up** to create a new student account (automatically added to `SYSTEM_USERS` and `STUDENT_RECORDS`).
-   - Sign in as the student and attempt to **Edit** or **Delete** a record.
-   - The unauthorized modification corrupts the block integrity, immediately triggering a red **`TAMPER DETECTED`** alert identifying the exact block, target student record, and actor.
-3. **Resetting the Ledger:**
-   - Sign back in as **Admin** and click **Reset / Clean Chain** to restore the ledger to a clean Genesis state.
-
-```
+| Step | Action | Expected Result |
+| :--- | :--- | :--- |
+| **1. Admin Login** | Sign in with `admin@vit.edu` / `admin123` and insert or update a student record. | PL/SQL trigger appends a new SHA-256 block. Banner displays **`CHAIN INTEGRITY VALID (100% Intact)`**. |
+| **2. Student Sign Up** | Sign out, register a new student via **Sign Up**, and sign in with the new credentials. | Student account is created in `SYSTEM_USERS` and synced to `STUDENT_RECORDS`. |
+| **3. Tamper Simulation** | As a Student, click **Edit** or **Delete** on any record in the table. | Unauthorized modification corrupts the block hash, triggering a red **`TAMPER DETECTED`** alert showing the exact block, target student, and attacker identity. |
+| **4. Chain Recovery** | Sign back in as **Admin** and click **Reset / Clean Chain**. | Reinitializes `AUDIT_LOG` back to the clean Genesis anchor (`0000...0000`). |
