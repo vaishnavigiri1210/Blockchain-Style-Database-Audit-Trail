@@ -3,7 +3,6 @@
     --bg-card: #ffffff;
     --bg-subtle: #f1f5f9;
     --border: #e2e8f0;
-    --border-hover: #cbd5e1;
     
     --text-heading: #0f172a;
     --text-body: #334155;
@@ -44,15 +43,153 @@ body {
     padding-bottom: 4rem;
 }
 
-/* Header & Nav */
-.navbar {
+.hidden {
+    display: none !important;
+}
+
+/* ========================================================= */
+/* AUTH CARD (SIGN IN / SIGN UP / FORGOT PASSWORD)           */
+/* ========================================================= */
+.auth-wrapper {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background-color: #f1f5f9;
+}
+
+.auth-card {
     background: #ffffff;
-    border-bottom: 1px solid var(--border);
-    padding: 0.9rem 2rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 2.25rem;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.auth-logo {
+    display: inline-block;
+    background: var(--badge-blue-bg);
+    color: var(--badge-blue-text);
+    border: 1px solid var(--badge-blue-border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 4px;
+    margin-bottom: 0.75rem;
+}
+
+.auth-header h1 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-heading);
+}
+
+.auth-header p {
+    font-size: 0.84rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}
+
+.alert-box {
+    padding: 9px 12px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    margin-bottom: 1rem;
+}
+
+.alert-error {
+    background: var(--badge-red-bg);
+    color: var(--badge-red-text);
+    border: 1px solid var(--badge-red-border);
+}
+
+.alert-success {
+    background: var(--badge-green-bg);
+    color: var(--badge-green-text);
+    border: 1px solid var(--badge-green-border);
+}
+
+.label-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    margin-bottom: 4px;
+}
+
+.label-row label {
+    margin-bottom: 0;
+}
+
+.text-link {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--brand-primary);
+    text-decoration: none;
+}
+
+.text-link:hover {
+    text-decoration: underline;
+}
+
+.auth-footer-links {
+    margin-top: 1.15rem;
+    text-align: center;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+}
+
+.demo-credentials {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.demo-label {
+    font-size: 0.74rem;
+    color: var(--text-muted);
+}
+
+.chip-btn {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    color: var(--text-body);
+    font-size: 0.74rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.chip-btn:hover {
+    background: #e2e8f0;
+}
+
+/* ========================================================= */
+/* NAVBAR                                                    */
+/* ========================================================= */
+.navbar {
+    background: #ffffff;
+    border-bottom: 1px solid var(--border);
+    padding: 0.85rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .brand-container {
@@ -67,20 +204,51 @@ body {
     border: 1px solid var(--badge-blue-border);
     padding: 3px 8px;
     border-radius: 4px;
-    font-size: 0.75rem;
+    font-size: 0.74rem;
     font-family: 'JetBrains Mono', monospace;
     font-weight: 600;
 }
 
+.brand-tag.student-badge {
+    background: var(--badge-green-bg);
+    color: var(--badge-green-text);
+    border-color: var(--badge-green-border);
+}
+
 .navbar h1 {
-    font-size: 1.15rem;
+    font-size: 1.1rem;
     font-weight: 700;
     color: var(--text-heading);
 }
 
-/* Layout */
+.nav-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.user-info {
+    display: flex;
+    flex-direction: column;
+    text-align: right;
+}
+
+.user-name {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--text-heading);
+}
+
+.user-email {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+/* ========================================================= */
+/* LAYOUT & BANNERS                                          */
+/* ========================================================= */
 .container {
-    max-width: 1320px;
+    max-width: 1360px;
     margin: 1.5rem auto;
     padding: 0 1.5rem;
     display: flex;
@@ -88,7 +256,6 @@ body {
     gap: 1.5rem;
 }
 
-/* Status Banner */
 .banner {
     display: flex;
     align-items: center;
@@ -97,11 +264,10 @@ body {
     border-radius: 8px;
     border: 1px solid var(--border);
     background: #ffffff;
-    transition: all 0.2s ease;
 }
 
 .banner-icon {
-    font-size: 1.5rem;
+    font-size: 1.35rem;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -111,8 +277,12 @@ body {
     flex-shrink: 0;
 }
 
+.banner-content {
+    flex: 1;
+}
+
 .banner h3 {
-    font-size: 0.98rem;
+    font-size: 0.96rem;
     font-weight: 600;
     margin-bottom: 2px;
 }
@@ -152,10 +322,12 @@ body {
     color: #991b1b;
 }
 
-/* Cards & Layout */
+/* ========================================================= */
+/* GRID, CARDS, FORMS & TABLES                               */
+/* ========================================================= */
 .grid-layout {
     display: grid;
-    grid-template-columns: 380px 1fr;
+    grid-template-columns: 370px 1fr;
     gap: 1.5rem;
 }
 
@@ -179,7 +351,7 @@ body {
 }
 
 .card h2 {
-    font-size: 1.05rem;
+    font-size: 1.02rem;
     font-weight: 600;
     color: var(--text-heading);
 }
@@ -191,7 +363,6 @@ body {
     margin-bottom: 1.1rem;
 }
 
-/* Forms */
 .form-group {
     margin-bottom: 0.85rem;
 }
@@ -207,7 +378,7 @@ body {
 
 label {
     display: block;
-    font-size: 0.75rem;
+    font-size: 0.74rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.03em;
@@ -217,7 +388,7 @@ label {
 
 input, select {
     width: 100%;
-    padding: 7px 11px;
+    padding: 8px 11px;
     font-size: 0.88rem;
     font-family: inherit;
     color: var(--text-heading);
@@ -232,7 +403,6 @@ input:focus, select:focus {
     box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12);
 }
 
-/* Buttons */
 .btn {
     font-family: inherit;
     font-size: 0.82rem;
@@ -247,8 +417,13 @@ input:focus, select:focus {
     gap: 6px;
 }
 
+.btn-lg {
+    padding: 10px 16px;
+    font-size: 0.88rem;
+}
+
 .btn-sm {
-    padding: 4px 9px;
+    padding: 5px 10px;
     font-size: 0.76rem;
 }
 
@@ -262,11 +437,6 @@ input:focus, select:focus {
 
 .btn-success {
     background: #047857;
-    color: #ffffff;
-}
-
-.btn-danger {
-    background: #dc2626;
     color: #ffffff;
 }
 
@@ -288,7 +458,6 @@ input:focus, select:focus {
     gap: 8px;
 }
 
-/* Data Tables */
 .table-responsive {
     overflow-x: auto;
     border: 1px solid var(--border);
@@ -338,6 +507,30 @@ tbody tr:hover {
     padding: 2px 6px;
     border-radius: 4px;
     display: inline-block;
+}
+
+.payload-box {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: #334155;
+    max-width: 340px;
+    word-break: break-word;
+}
+
+.tamper-row {
+    background-color: #fef2f2 !important;
+}
+
+.tamper-tag {
+    display: inline-block;
+    margin-top: 4px;
+    background: var(--badge-red-bg);
+    color: var(--badge-red-text);
+    border: 1px solid var(--badge-red-border);
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
 }
 
 .op-badge {

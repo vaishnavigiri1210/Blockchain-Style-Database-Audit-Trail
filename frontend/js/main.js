@@ -1,18 +1,198 @@
 let cachedStudents = [];
+let currentUser = null;
 
 document.addEventListener("DOMContentLoaded", () => {
-    loadStudents();
-    loadAuditLog();
+    checkExistingSession();
 
+    // Auth Listeners
+    document.getElementById("login-form").addEventListener("submit", handleLogin);
+    document.getElementById("signup-form").addEventListener("submit", handleSignup);
+    document.getElementById("forgot-form").addEventListener("submit", handleForgotPassword);
+    document.getElementById("btn-logout").addEventListener("click", handleLogout);
+
+    // Unified Dashboard Listeners
     document.getElementById("student-form").addEventListener("submit", handleAddStudent);
     document.getElementById("btn-refresh-students").addEventListener("click", loadStudents);
     document.getElementById("btn-refresh-ledger").addEventListener("click", loadAuditLog);
-    document.getElementById("btn-verify").addEventListener("click", runIntegrityCheck);
-    document.getElementById("btn-simulate-tamper").addEventListener("click", simulateTamper);
     document.getElementById("btn-reset-chain").addEventListener("click", resetChain);
+    document.getElementById("btn-verify").addEventListener("click", runIntegrityCheck);
 });
 
-// 1. Fetch & Render Active Students
+// =========================================================
+// AUTH NAVIGATION (SIGN IN / SIGN UP / FORGOT PASSWORD)
+// =========================================================
+function showAuthSection(section) {
+    const alertBox = document.getElementById("auth-alert");
+    alertBox.classList.add("hidden");
+
+    document.getElementById("login-form").classList.add("hidden");
+    document.getElementById("signup-form").classList.add("hidden");
+    document.getElementById("forgot-form").classList.add("hidden");
+
+    const title = document.getElementById("auth-title");
+    const subtitle = document.getElementById("auth-subtitle");
+
+    if (section === "signin") {
+        document.getElementById("login-form").classList.remove("hidden");
+        title.innerText = "Sign In";
+        subtitle.innerText = "Blockchain-Style Database Audit Trail";
+    } else if (section === "signup") {
+        document.getElementById("signup-form").classList.remove("hidden");
+        title.innerText = "Student Sign Up";
+        subtitle.innerText = "Create your student account";
+    } else if (section === "forgot") {
+        document.getElementById("forgot-form").classList.remove("hidden");
+        title.innerText = "Forgot Password";
+        subtitle.innerText = "Reset your student account password";
+    }
+}
+
+function showAuthAlert(msg, isSuccess = false) {
+    const alertBox = document.getElementById("auth-alert");
+    alertBox.innerText = msg;
+    alertBox.className = isSuccess ? "alert-box alert-success" : "alert-box alert-error";
+    alertBox.classList.remove("hidden");
+}
+
+function quickFill(email, password) {
+    showAuthSection("signin");
+    document.getElementById("login-email").value = email;
+    document.getElementById("login-password").value = password;
+}
+
+async function checkExistingSession() {
+    try {
+        const res = await fetch("/api/session");
+        const json = await res.json();
+        if (json.authenticated) {
+            renderDashboardForUser(json.user);
+        } else {
+            showLoginView();
+        }
+    } catch (err) {
+        showLoginView();
+    }
+}
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById("login-email").value;
+    const password = document.getElementById("login-password").value;
+
+    try {
+        const res = await fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password })
+        });
+        const json = await res.json();
+
+        if (json.success) {
+            renderDashboardForUser(json.user);
+        } else {
+            showAuthAlert(json.error || "Sign in failed.", false);
+        }
+    } catch (err) {
+        showAuthAlert("Network error while signing in.", false);
+    }
+}
+
+async function handleSignup(e) {
+    e.preventDefault();
+    const payload = {
+        full_name: document.getElementById("reg-name").value,
+        email: document.getElementById("reg-email").value,
+        department: document.getElementById("reg-dept").value,
+        password: document.getElementById("reg-password").value
+    };
+
+    try {
+        const res = await fetch("/api/signup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+
+        if (json.success) {
+            showAuthSection("signin");
+            document.getElementById("login-email").value = payload.email;
+            showAuthAlert(json.message, true);
+        } else {
+            showAuthAlert(json.error, false);
+        }
+    } catch (err) {
+        showAuthAlert("Network error during registration.", false);
+    }
+}
+
+async function handleForgotPassword(e) {
+    e.preventDefault();
+    const payload = {
+        email: document.getElementById("fp-email").value,
+        new_password: document.getElementById("fp-new-password").value
+    };
+
+    try {
+        const res = await fetch("/api/forgot-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+
+        if (json.success) {
+            showAuthSection("signin");
+            document.getElementById("login-email").value = payload.email;
+            showAuthAlert(json.message, true);
+        } else {
+            showAuthAlert(json.error, false);
+        }
+    } catch (err) {
+        showAuthAlert("Network error during password reset.", false);
+    }
+}
+
+async function handleLogout() {
+    await fetch("/api/logout", { method: "POST" });
+    currentUser = null;
+    showLoginView();
+}
+
+function showLoginView() {
+    document.getElementById("login-view").classList.remove("hidden");
+    document.getElementById("app-shell").classList.add("hidden");
+}
+
+function renderDashboardForUser(user) {
+    currentUser = user;
+    document.getElementById("login-view").classList.add("hidden");
+    document.getElementById("app-shell").classList.remove("hidden");
+
+    const badge = document.getElementById("nav-role-badge");
+    const resetBtn = document.getElementById("btn-reset-chain");
+
+    if (user.role === "ADMIN") {
+        badge.innerText = "ROLE: ADMIN";
+        badge.className = "brand-tag";
+        resetBtn.classList.remove("hidden");
+    } else {
+        badge.innerText = "ROLE: STUDENT";
+        badge.className = "brand-tag student-badge";
+        resetBtn.classList.add("hidden");
+    }
+
+    document.getElementById("nav-user-name").innerText = user.name;
+    document.getElementById("nav-user-email").innerText = user.email;
+
+    loadStudents();
+    loadAuditLog();
+    runIntegrityCheck();
+}
+
+// =========================================================
+// STUDENT RECORDS CRUD (UNIFIED FOR ADMIN & STUDENT)
+// =========================================================
 async function loadStudents() {
     try {
         const res = await fetch("/api/students");
@@ -21,7 +201,7 @@ async function loadStudents() {
         tbody.innerHTML = "";
 
         if (!json.success || !json.data || json.data.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding: 1.5rem;">No active student records.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding: 1.5rem;">No student records found.</td></tr>`;
             return;
         }
 
@@ -50,42 +230,6 @@ async function loadStudents() {
     }
 }
 
-// 2. Fetch & Render Cryptographic Blockchain Ledger
-async function loadAuditLog() {
-    try {
-        const res = await fetch("/api/audit-log");
-        const json = await res.json();
-        const tbody = document.querySelector("#ledger-table tbody");
-        tbody.innerHTML = "";
-
-        if (!json.success || !json.data || json.data.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding: 1.5rem;">No audit blocks generated yet.</td></tr>`;
-            return;
-        }
-
-        json.data.forEach(b => {
-            const tr = document.createElement("tr");
-            const opClass = b.operation_type === 'INSERT' ? 'op-insert' : (b.operation_type === 'UPDATE' ? 'op-update' : 'op-delete');
-            const shortPrev = b.prev_hash ? b.prev_hash.substring(0, 16) + '...' : '';
-            const shortRecord = b.record_hash ? b.record_hash.substring(0, 16) + '...' : '';
-
-            tr.innerHTML = `
-                <td><strong>Block #${b.audit_id}</strong></td>
-                <td><span class="op-badge ${opClass}">${b.operation_type}</span></td>
-                <td><strong>#${b.record_pk}</strong></td>
-                <td><span class="hash-tag" title="${b.prev_hash}">${shortPrev}</span></td>
-                <td><span class="hash-tag" title="${b.record_hash}">${shortRecord}</span></td>
-                <td>${b.changed_by}</td>
-                <td style="color:#64748b; font-size:0.75rem;">${b.changed_at || ''}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-    } catch (err) {
-        console.error("Failed to fetch audit log:", err);
-    }
-}
-
-// 3. Add Student Form Submit
 async function handleAddStudent(e) {
     e.preventDefault();
     const payload = {
@@ -106,23 +250,26 @@ async function handleAddStudent(e) {
 
     const json = await res.json();
     if (json.success) {
+        if (json.tampered) {
+            alert(json.message);
+        }
         document.getElementById("student_id").value = "";
         document.getElementById("first_name").value = "";
         document.getElementById("last_name").value = "";
         document.getElementById("email").value = "";
         loadStudents();
         loadAuditLog();
+        runIntegrityCheck();
     } else {
         alert("Insert failed: " + json.error);
     }
 }
 
-// 4. Update / Edit Student Prompt
 async function editStudentPrompt(studentId) {
     const student = cachedStudents.find(s => s.student_id === studentId);
     if (!student) return;
 
-    const newCgpa = prompt(`[UPDATE DEMO] Enter new CGPA for ${student.first_name}:`, student.cgpa);
+    const newCgpa = prompt(`Enter new CGPA for ${student.first_name}:`, student.cgpa);
     if (newCgpa === null) return;
 
     const newStatus = prompt(`Enter new Fee Status (PAID / PENDING / OVERDUE):`, student.fee_status);
@@ -145,28 +292,83 @@ async function editStudentPrompt(studentId) {
 
     const json = await res.json();
     if (json.success) {
+        if (json.tampered) {
+            alert(json.message);
+        }
         loadStudents();
         loadAuditLog();
+        runIntegrityCheck();
     } else {
         alert("Update failed: " + json.error);
     }
 }
 
-// 5. Delete Student
 async function deleteStudent(studentId) {
-    if (!confirm(`Delete Student #${studentId}? This deletion will be permanently hashed into the blockchain audit ledger.`)) return;
+    if (!confirm(`Delete Student #${studentId}?`)) return;
 
     const res = await fetch(`/api/students/${studentId}`, { method: "DELETE" });
     const json = await res.json();
     if (json.success) {
+        if (json.tampered) {
+            alert(json.message);
+        }
         loadStudents();
         loadAuditLog();
+        runIntegrityCheck();
     } else {
         alert("Delete failed: " + json.error);
     }
 }
 
-// 6. Run Verification Procedure
+// =========================================================
+// CRYPTOGRAPHIC AUDIT LEDGER & VERIFICATION
+// =========================================================
+async function loadAuditLog() {
+    try {
+        const res = await fetch("/api/audit-log");
+        const json = await res.json();
+        const tbody = document.querySelector("#ledger-table tbody");
+        tbody.innerHTML = "";
+
+        if (!json.success || !json.data || json.data.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding: 1.5rem;">No audit blocks generated yet.</td></tr>`;
+            return;
+        }
+
+        json.data.forEach(b => {
+            const tr = document.createElement("tr");
+            const isTampered = b.new_data && b.new_data.includes("TAMPERED_BY=");
+            if (isTampered) tr.classList.add("tamper-row");
+
+            const opClass = b.operation_type === 'INSERT' ? 'op-insert' : (b.operation_type === 'UPDATE' ? 'op-update' : 'op-delete');
+            const shortPrev = b.prev_hash ? b.prev_hash.substring(0, 14) + '...' : '';
+            const shortRecord = b.record_hash ? b.record_hash.substring(0, 14) + '...' : '';
+
+            let culpritBadge = "";
+            if (isTampered) {
+                const actor = b.new_data.split("TAMPERED_BY=")[1].split("|")[0];
+                culpritBadge = `<div class="tamper-tag">⚠ TAMPERED BY: ${actor}</div>`;
+            }
+
+            tr.innerHTML = `
+                <td><strong>Block #${b.audit_id}</strong></td>
+                <td><span class="op-badge ${opClass}">${b.operation_type}</span></td>
+                <td><strong>Student #${b.record_pk}</strong></td>
+                <td>
+                    <div class="payload-box">${b.new_data || b.old_data || ''}</div>
+                    ${culpritBadge}
+                </td>
+                <td><span class="hash-tag" title="${b.prev_hash}">${shortPrev}</span></td>
+                <td><span class="hash-tag" title="${b.record_hash}">${shortRecord}</span></td>
+                <td style="color:#64748b; font-size:0.75rem;">${b.changed_at || ''}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        console.error("Failed to fetch audit log:", err);
+    }
+}
+
 async function runIntegrityCheck() {
     const banner = document.getElementById("verification-banner");
     const icon = document.getElementById("banner-icon");
@@ -175,8 +377,8 @@ async function runIntegrityCheck() {
 
     banner.className = "banner banner-neutral";
     icon.innerText = "⏳";
-    title.innerText = "Traversing Cryptographic Chain...";
-    desc.innerText = "Recomputing SHA-256 for all blocks using Oracle DBMS_CRYPTO...";
+    title.innerText = "Verifying Cryptographic Chain...";
+    desc.innerText = "Recomputing SHA-256 hashes across all blocks in Oracle DB...";
 
     try {
         const res = await fetch("/api/verify-chain");
@@ -190,39 +392,18 @@ async function runIntegrityCheck() {
         } else {
             banner.className = "banner banner-broken";
             icon.innerText = "⚠";
-            title.innerText = `TAMPER DETECTED: ${json.verification.status}`;
+            title.innerText = `TAMPER DETECTED — ${json.verification.target_record || 'Chain Broken'}`;
             desc.innerText = json.verification.message;
         }
     } catch (err) {
         banner.className = "banner banner-broken";
-        title.innerText = "Verification Request Failed";
+        title.innerText = "Verification Failed";
         desc.innerText = err.message;
     }
 }
 
-// 7. Simulate Direct DB Tampering
-async function simulateTamper() {
-    const auditId = prompt("Enter the Block # (AUDIT_ID) you want to maliciously alter directly in Oracle DB:", "1");
-    if (!auditId) return;
-
-    const res = await fetch("/api/tamper", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audit_id: parseInt(auditId) })
-    });
-
-    const json = await res.json();
-    if (json.success) {
-        alert(`Direct tampering injected into Block #${auditId}! Click 'Run Integrity Verification' to test detection.`);
-        loadAuditLog();
-    } else {
-        alert("Tampering failed: " + json.error);
-    }
-}
-
-// 8. One-Click Clean Chain Reset
 async function resetChain() {
-    if (!confirm("Reset database to clean Genesis state? This will clear tampered blocks and reseed fresh test students.")) return;
+    if (!confirm("Reset database to clean Genesis state?")) return;
 
     try {
         const res = await fetch("/api/reset-chain", { method: "POST" });
