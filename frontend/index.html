@@ -96,7 +96,7 @@
     </div>
 
     <!-- ========================================================= -->
-    <!-- UNIFIED DASHBOARD (SAME CONTENT FOR ADMIN & STUDENT)      -->
+    <!-- MAIN DASHBOARD SHELL                                      -->
     <!-- ========================================================= -->
     <div id="app-shell" class="hidden">
         <header class="navbar">
@@ -114,8 +114,8 @@
         </header>
 
         <div class="container">
-            <!-- CRYPTOGRAPHIC CHAIN INTEGRITY & TAMPER ATTRIBUTION BANNER -->
-            <section id="verification-banner" class="banner banner-neutral">
+            <!-- CRYPTOGRAPHIC CHAIN INTEGRITY BANNER (ADMIN ONLY) -->
+            <section id="verification-banner" class="banner banner-neutral hidden">
                 <div class="banner-icon" id="banner-icon">ℹ</div>
                 <div class="banner-content">
                     <h3 id="banner-title">Verifying Cryptographic Chain...</h3>
@@ -124,7 +124,7 @@
                 <button id="btn-verify" class="btn btn-primary">Verify Integrity</button>
             </section>
 
-            <!-- SAME CONTENT GRID FOR BOTH ADMIN AND STUDENT -->
+            <!-- STUDENT RECORDS WORKSPACE -->
             <div class="grid-layout">
                 <!-- Student Entry Form -->
                 <section class="card">
@@ -176,7 +176,7 @@
                     <div class="card-header">
                         <div>
                             <h2>Live Student Records (STUDENT_RECORDS)</h2>
-                            <p class="subtitle" style="margin-bottom:0;">Admin edits are authorized; Student edits trigger tamper detection</p>
+                            <p class="subtitle" style="margin-bottom:0;">Admin edits are authorized; Student edits are blocked & flagged</p>
                         </div>
                         <button id="btn-refresh-students" class="btn btn-sm btn-outline">Refresh</button>
                     </div>
@@ -198,8 +198,8 @@
                 </section>
             </div>
 
-            <!-- Cryptographic Audit Ledger (Same for Admin & Student) -->
-            <section class="card">
+            <!-- Cryptographic Audit Ledger (ADMIN ONLY) -->
+            <section id="ledger-section" class="card hidden">
                 <div class="card-header">
                     <div>
                         <h2>Cryptographic Audit Ledger (AUDIT_LOG)</h2>
@@ -207,7 +207,7 @@
                     </div>
                     <div class="btn-group">
                         <button id="btn-refresh-ledger" class="btn btn-sm btn-outline">Refresh Ledger</button>
-                        <button id="btn-reset-chain" class="btn btn-sm btn-outline hidden" style="color: #047857; border-color: #a7f3d0;">Reset / Clean Chain</button>
+                        <button id="btn-reset-chain" class="btn btn-sm btn-outline" style="color: #047857; border-color: #a7f3d0;">Reset / Clean Chain</button>
                     </div>
                 </div>
 

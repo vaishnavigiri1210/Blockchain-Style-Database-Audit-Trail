@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("forgot-form").addEventListener("submit", handleForgotPassword);
     document.getElementById("btn-logout").addEventListener("click", handleLogout);
 
-    // Unified Dashboard Listeners
+    // Dashboard Listeners
     document.getElementById("student-form").addEventListener("submit", handleAddStudent);
     document.getElementById("btn-refresh-students").addEventListener("click", loadStudents);
     document.getElementById("btn-refresh-ledger").addEventListener("click", loadAuditLog);
@@ -170,15 +170,23 @@ function renderDashboardForUser(user) {
     document.getElementById("app-shell").classList.remove("hidden");
 
     const badge = document.getElementById("nav-role-badge");
+    const banner = document.getElementById("verification-banner");
+    const ledgerSection = document.getElementById("ledger-section");
     const resetBtn = document.getElementById("btn-reset-chain");
 
     if (user.role === "ADMIN") {
         badge.innerText = "ROLE: ADMIN";
         badge.className = "brand-tag";
+        banner.classList.remove("hidden");
+        ledgerSection.classList.remove("hidden");
         resetBtn.classList.remove("hidden");
+        loadAuditLog();
+        runIntegrityCheck();
     } else {
         badge.innerText = "ROLE: STUDENT";
         badge.className = "brand-tag student-badge";
+        banner.classList.add("hidden");
+        ledgerSection.classList.add("hidden");
         resetBtn.classList.add("hidden");
     }
 
@@ -186,8 +194,6 @@ function renderDashboardForUser(user) {
     document.getElementById("nav-user-email").innerText = user.email;
 
     loadStudents();
-    loadAuditLog();
-    runIntegrityCheck();
 }
 
 // =========================================================
@@ -258,8 +264,10 @@ async function handleAddStudent(e) {
         document.getElementById("last_name").value = "";
         document.getElementById("email").value = "";
         loadStudents();
-        loadAuditLog();
-        runIntegrityCheck();
+        if (currentUser && currentUser.role === "ADMIN") {
+            loadAuditLog();
+            runIntegrityCheck();
+        }
     } else {
         alert("Insert failed: " + json.error);
     }
@@ -296,8 +304,10 @@ async function editStudentPrompt(studentId) {
             alert(json.message);
         }
         loadStudents();
-        loadAuditLog();
-        runIntegrityCheck();
+        if (currentUser && currentUser.role === "ADMIN") {
+            loadAuditLog();
+            runIntegrityCheck();
+        }
     } else {
         alert("Update failed: " + json.error);
     }
@@ -313,15 +323,17 @@ async function deleteStudent(studentId) {
             alert(json.message);
         }
         loadStudents();
-        loadAuditLog();
-        runIntegrityCheck();
+        if (currentUser && currentUser.role === "ADMIN") {
+            loadAuditLog();
+            runIntegrityCheck();
+        }
     } else {
         alert("Delete failed: " + json.error);
     }
 }
 
 // =========================================================
-// CRYPTOGRAPHIC AUDIT LEDGER & VERIFICATION
+// CRYPTOGRAPHIC AUDIT LEDGER & VERIFICATION (ADMIN ONLY)
 // =========================================================
 async function loadAuditLog() {
     try {

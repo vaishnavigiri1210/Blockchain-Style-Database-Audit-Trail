@@ -124,7 +124,6 @@ def signup():
     if not full_name or not email or not password:
         return jsonify({"success": False, "error": "All fields are required."}), 400
 
-    # Split full name into First Name and Last Name for STUDENT_RECORDS
     name_parts = full_name.split(None, 1)
     first_name = name_parts[0]
     last_name = name_parts[1] if len(name_parts) > 1 else "Student"
@@ -136,13 +135,11 @@ def signup():
                 if cursor.fetchone()[0] > 0:
                     return jsonify({"success": False, "error": "This email is already registered."}), 400
 
-                # 1. Insert into SYSTEM_USERS for login
                 cursor.execute("""
                     INSERT INTO SYSTEM_USERS (FULL_NAME, EMAIL, PASSWORD, ROLE, DEPARTMENT)
                     VALUES (:1, :2, :3, 'STUDENT', :4)
                 """, (full_name, email, password, department))
 
-                # 2. Also insert into STUDENT_RECORDS if email doesn't already exist there
                 cursor.execute("SELECT COUNT(*) FROM STUDENT_RECORDS WHERE LOWER(EMAIL) = :1", (email,))
                 if cursor.fetchone()[0] == 0:
                     cursor.execute("SELECT NVL(MAX(STUDENT_ID), 100) + 1 FROM STUDENT_RECORDS")
@@ -203,7 +200,9 @@ def get_session():
 
 
 # ---------------------------------------------------------
-# 2. Student Records APIs (Same View for Admin & Student)
+# 2. Student Records APIs
+#    - ADMIN: Authorized CRUD (Updates STUDENT_RECORDS & chains valid SHA-256 block)
+#    - STUDENT: Unauthorized Update/Delete blocked; tamper flagged in AUDIT_LOG
 # ---------------------------------------------------------
 @app.route("/api/students", methods=["GET"])
 @login_required()
@@ -243,7 +242,6 @@ def add_student():
                     data["fee_status"].upper()
                 ))
 
-                # If a Student inserts directly without Admin role, corrupt the block to trigger tamper detection
                 if user["role"] == "STUDENT":
                     cursor.execute("SELECT MAX(AUDIT_ID) FROM AUDIT_LOG")
                     latest_id = cursor.fetchone()[0]
@@ -276,6 +274,7 @@ def update_student(student_id):
         with get_connection() as conn:
             with conn.cursor() as cursor:
                 if user["role"] == "ADMIN":
+                    # AUTHORIZED: Update STUDENT_RECORDS & let PL/SQL trigger chain a valid SHA-256 block
                     cursor.execute("""
                         UPDATE STUDENT_RECORDS
                         SET FIRST_NAME = :1,
@@ -298,13 +297,14 @@ def update_student(student_id):
                     conn.commit()
                     return jsonify({"success": True, "tampered": False, "message": f"Student #{student_id} updated cleanly."})
                 else:
+                    # UNAUTHORIZED (STUDENT): Do NOT update STUDENT_RECORDS! Flag tamper in AUDIT_LOG for Admin
                     cursor.execute("SELECT MAX(AUDIT_ID) FROM AUDIT_LOG WHERE RECORD_PK = :1", (str(student_id),))
                     target_audit_id = cursor.fetchone()[0]
                     if not target_audit_id:
                         return jsonify({"success": False, "error": "No audit block found for this student."}), 404
 
                     attacker = f"{user['name']} ({user['email']})"
-                    tamper_payload = f"UNAUTHORIZED_EDIT[CGPA={data['cgpa']},FEE={data['fee_status']}]|TAMPERED_BY={attacker}"
+                    tamper_payload = f"BLOCKED_UNAUTHORIZED_EDIT[CGPA={data['cgpa']},FEE={data['fee_status']}]|TAMPERED_BY={attacker}"
 
                     cursor.execute("""
                         UPDATE AUDIT_LOG
@@ -316,7 +316,7 @@ def update_student(student_id):
                     return jsonify({
                         "success": True,
                         "tampered": True,
-                        "message": f"Tamper Detected! {attacker} altered Block #{target_audit_id} (Student #{student_id})."
+                        "message": f"Tamper Detected! Update blocked. {attacker} attempted unauthorized edit on Student #{student_id} (Block #{target_audit_id})."
                     })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -330,17 +330,19 @@ def delete_student(student_id):
         with get_connection() as conn:
             with conn.cursor() as cursor:
                 if user["role"] == "ADMIN":
+                    # AUTHORIZED: Delete from STUDENT_RECORDS & log valid SHA-256 block
                     cursor.execute("DELETE FROM STUDENT_RECORDS WHERE STUDENT_ID = :1", (student_id,))
                     conn.commit()
                     return jsonify({"success": True, "tampered": False, "message": f"Student #{student_id} deleted cleanly."})
                 else:
+                    # UNAUTHORIZED (STUDENT): Do NOT delete from STUDENT_RECORDS! Flag tamper in AUDIT_LOG for Admin
                     cursor.execute("SELECT MAX(AUDIT_ID) FROM AUDIT_LOG WHERE RECORD_PK = :1", (str(student_id),))
                     target_audit_id = cursor.fetchone()[0]
                     if not target_audit_id:
                         return jsonify({"success": False, "error": "No audit block found for this student."}), 404
 
                     attacker = f"{user['name']} ({user['email']})"
-                    tamper_payload = f"UNAUTHORIZED_DELETE_ATTEMPT|TAMPERED_BY={attacker}"
+                    tamper_payload = f"BLOCKED_UNAUTHORIZED_DELETE|TAMPERED_BY={attacker}"
 
                     cursor.execute("""
                         UPDATE AUDIT_LOG
@@ -352,17 +354,17 @@ def delete_student(student_id):
                     return jsonify({
                         "success": True,
                         "tampered": True,
-                        "message": f"Tamper Detected! {attacker} attempted unauthorized delete on Block #{target_audit_id} (Student #{student_id})."
+                        "message": f"Tamper Detected! Delete blocked. {attacker} attempted unauthorized delete on Student #{student_id} (Block #{target_audit_id})."
                     })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
 
 # ---------------------------------------------------------
-# 3. Cryptographic Audit Ledger API (Visible to Both)
+# 3. Cryptographic Audit Ledger API (Admin Only)
 # ---------------------------------------------------------
 @app.route("/api/audit-log", methods=["GET"])
-@login_required()
+@login_required(roles=["ADMIN"])
 def get_audit_log():
     try:
         with get_connection() as conn:
@@ -380,10 +382,10 @@ def get_audit_log():
 
 
 # ---------------------------------------------------------
-# 4. Chain Integrity Verification & Attribution API
+# 4. Chain Integrity Verification & Attribution API (Admin Only)
 # ---------------------------------------------------------
 @app.route("/api/verify-chain", methods=["GET"])
-@login_required()
+@login_required(roles=["ADMIN"])
 def verify_chain():
     try:
         with get_connection() as conn:
@@ -400,9 +402,18 @@ def verify_chain():
                 culprit = None
                 target_record = None
 
+                # Always surface the LATEST tampered block if multiple tampered blocks exist
+                cursor.execute("""
+                    SELECT MAX(AUDIT_ID) FROM AUDIT_LOG WHERE RECORD_HASH LIKE 'TAMPERED_%'
+                """)
+                latest_tampered = cursor.fetchone()[0]
+                if latest_tampered:
+                    broken_id = latest_tampered
+                    status = "TAMPERED_RECORD"
+
                 if broken_id:
                     cursor.execute("""
-                        SELECT RECORD_PK, CHANGED_BY, NEW_DATA, CHANGED_AT
+                        SELECT RECORD_PK, CHANGED_BY, NEW_DATA, TO_CHAR(CHANGED_AT, 'YYYY-MM-DD HH24:MI:SS')
                         FROM AUDIT_LOG
                         WHERE AUDIT_ID = :1
                     """, (broken_id,))
