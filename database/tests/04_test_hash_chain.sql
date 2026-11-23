@@ -1,30 +1,74 @@
 -- ====================================================================
 -- Script: 04_test_hash_chain.sql
--- Description: Inserts, updates, and deletes test student records
+-- Description: Resets chain cleanly, tests INSERT/UPDATE/DELETE blocks,
+--              and keeps all 4 students (#101 to #104) with exact branches
 -- Execute As: SECURE_AUDIT_ADMIN
 -- ====================================================================
 
--- 1. Insert initial student records (Mines Block #1, #2, #3)
+SET DEFINE OFF;
+
+-- Clean up existing rows/blocks & reset Genesis anchor
+TRUNCATE TABLE AUDIT_LOG;
+TRUNCATE TABLE STUDENT_RECORDS;
+
+BEGIN
+    EXECUTE IMMEDIATE 'DROP SEQUENCE AUDIT_LOG_SEQ';
+    EXECUTE IMMEDIATE 'CREATE SEQUENCE AUDIT_LOG_SEQ START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE';
+EXCEPTION
+    WHEN OTHERS THEN NULL;
+END;
+/
+
+DELETE FROM AUDIT_METADATA;
+INSERT INTO AUDIT_METADATA (CHAIN_ID, LAST_AUDIT_ID, LAST_HASH)
+VALUES (1, 0, '0000000000000000000000000000000000000000000000000000000000000000');
+COMMIT;
+
+-- 1. Insert initial student records (Mines Block #1, #2, #3, #4)
 INSERT INTO STUDENT_RECORDS (STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS)
-VALUES (101, 'Vedant', 'Joshi', 'vedant@vit.edu', 'AI and DS', 9.45, 'PENDING');
+VALUES (101, 'Vedant', 'Joshi', 'vedant@vit.edu', 'CS', 9.45, 'PENDING');
 
 INSERT INTO STUDENT_RECORDS (STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS)
 VALUES (102, 'Kalyani', 'Dudhale', 'kalyani@vit.edu', 'AI and DS', 9.10, 'PAID');
 
 INSERT INTO STUDENT_RECORDS (STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS)
-VALUES (103, 'Vaishnavi', 'Giri', 'vaishnavi@vit.edu', 'AI and DS', 9.60, 'PAID');
+VALUES (103, 'Vaishnavi', 'Giri', 'vaishnavi@vit.edu', 'AI', 9.60, 'PAID');
+
+INSERT INTO STUDENT_RECORDS (STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS)
+VALUES (104, 'Sneha', 'Kale', 'sneha@vit.edu', 'AI and DS', 9.20, 'PENDING');
 
 COMMIT;
 
--- 2. Update a student record (Mines Block #4)
+-- 2. Update a student record (Mines Block #5)
 UPDATE STUDENT_RECORDS
 SET CGPA = 9.75, FEE_STATUS = 'PAID'
 WHERE STUDENT_ID = 101;
 
 COMMIT;
 
--- 3. Delete a student record (Mines Block #5)
+-- 3. Delete a student record to test DELETE audit block (Mines Block #6)
 DELETE FROM STUDENT_RECORDS
 WHERE STUDENT_ID = 102;
 
 COMMIT;
+
+-- 4. Re-insert student #102 (Kalyani Dudhale) so all 4 records appear in Live Student Records (Mines Block #7)
+INSERT INTO STUDENT_RECORDS (STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS)
+VALUES (102, 'Kalyani', 'Dudhale', 'kalyani@vit.edu', 'AI and DS', 9.20, 'PAID');
+
+COMMIT;
+
+-- 5. Verify live records, chained audit blocks, and metadata anchor
+SELECT STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS
+FROM STUDENT_RECORDS
+ORDER BY STUDENT_ID;
+
+SELECT AUDIT_ID, OPERATION_TYPE, RECORD_PK,
+       SUBSTR(PREV_HASH, 1, 16) AS PREV_HASH_16,
+       SUBSTR(RECORD_HASH, 1, 16) AS RECORD_HASH_16,
+       CHANGED_BY, CHANGED_AT
+FROM AUDIT_LOG
+ORDER BY AUDIT_ID;
+
+SELECT CHAIN_ID, LAST_AUDIT_ID, SUBSTR(LAST_HASH, 1, 24) AS LAST_HASH_24
+FROM AUDIT_METADATA;

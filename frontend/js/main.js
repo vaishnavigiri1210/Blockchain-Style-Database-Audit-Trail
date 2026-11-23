@@ -335,6 +335,47 @@ async function deleteStudent(studentId) {
 // =========================================================
 // CRYPTOGRAPHIC AUDIT LEDGER & VERIFICATION (ADMIN ONLY)
 // =========================================================
+function formatPayloadAndTampers(rawPayload) {
+    if (!rawPayload) return "";
+
+    const parts = rawPayload.split("|").map(p => p.trim()).filter(Boolean);
+    const basePayload = parts[0] || "";
+
+    if (parts.length === 1) {
+        return `<div class="payload-box">${basePayload}</div>`;
+    }
+
+    let html = `<div class="payload-box" style="margin-bottom:8px;">${basePayload}</div>`;
+    html += `<div style="display:flex; flex-direction:column; gap:8px;">`;
+
+    for (let i = 1; i < parts.length; i++) {
+        const part = parts[i];
+        if (part.startsWith("BLOCKED_")) {
+            const nextPart = parts[i + 1] || "";
+            if (nextPart.startsWith("TAMPERED_BY=")) {
+                const actor = nextPart.replace("TAMPERED_BY=", "").trim();
+                html += `
+                    <div style="border-left: 3px solid #fca5a5; padding-left: 8px; display:flex; flex-direction:column; gap:4px;">
+                        <div class="payload-box" style="color:#7f1d1d;">${part}</div>
+                        <div class="tamper-tag" style="margin-top:0;">⚠ TAMPERED BY: ${actor}</div>
+                    </div>
+                `;
+                i++;
+            } else {
+                html += `<div class="payload-box" style="color:#7f1d1d;">${part}</div>`;
+            }
+        } else if (part.startsWith("TAMPERED_BY=")) {
+            const actor = part.replace("TAMPERED_BY=", "").trim();
+            html += `<div class="tamper-tag" style="margin-top:0;">⚠ TAMPERED BY: ${actor}</div>`;
+        } else {
+            html += `<div class="payload-box">${part}</div>`;
+        }
+    }
+
+    html += `</div>`;
+    return html;
+}
+
 async function loadAuditLog() {
     try {
         const res = await fetch("/api/audit-log");
@@ -356,20 +397,13 @@ async function loadAuditLog() {
             const shortPrev = b.prev_hash ? b.prev_hash.substring(0, 14) + '...' : '';
             const shortRecord = b.record_hash ? b.record_hash.substring(0, 14) + '...' : '';
 
-            let culpritBadge = "";
-            if (isTampered) {
-                const actor = b.new_data.split("TAMPERED_BY=")[1].split("|")[0];
-                culpritBadge = `<div class="tamper-tag">⚠ TAMPERED BY: ${actor}</div>`;
-            }
+            const payloadHtml = formatPayloadAndTampers(b.new_data || b.old_data || '');
 
             tr.innerHTML = `
                 <td><strong>Block #${b.audit_id}</strong></td>
                 <td><span class="op-badge ${opClass}">${b.operation_type}</span></td>
                 <td><strong>Student #${b.record_pk}</strong></td>
-                <td>
-                    <div class="payload-box">${b.new_data || b.old_data || ''}</div>
-                    ${culpritBadge}
-                </td>
+                <td>${payloadHtml}</td>
                 <td><span class="hash-tag" title="${b.prev_hash}">${shortPrev}</span></td>
                 <td><span class="hash-tag" title="${b.record_hash}">${shortRecord}</span></td>
                 <td style="color:#64748b; font-size:0.75rem;">${b.changed_at || ''}</td>

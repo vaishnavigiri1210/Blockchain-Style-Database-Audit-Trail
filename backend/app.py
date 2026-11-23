@@ -31,15 +31,26 @@ def ensure_users_table():
                             EMAIL         VARCHAR2(100)  NOT NULL UNIQUE,
                             PASSWORD      VARCHAR2(100)  NOT NULL,
                             ROLE          VARCHAR2(20)   NOT NULL CHECK (ROLE IN ('ADMIN', 'STUDENT')),
+                            STUDENT_REF   NUMBER(10)     NULL,
                             DEPARTMENT    VARCHAR2(100)  NOT NULL
                         )
                     """)
-                cursor.execute("SELECT COUNT(*) FROM SYSTEM_USERS WHERE LOWER(EMAIL) = 'admin@vit.edu'")
-                if cursor.fetchone()[0] == 0:
-                    cursor.execute("""
-                        INSERT INTO SYSTEM_USERS (FULL_NAME, EMAIL, PASSWORD, ROLE, DEPARTMENT)
-                        VALUES ('System Administrator', 'admin@vit.edu', 'admin123', 'ADMIN', 'Examination & Records')
-                    """)
+
+                default_users = [
+                    ("Academic System Admin", "admin@vit.edu", "admin123", "ADMIN", None, "Examination and Records"),
+                    ("Vedant Joshi", "vedant@vit.edu", "student123", "STUDENT", 101, "CS"),
+                    ("Kalyani Dudhale", "kalyani@vit.edu", "student123", "STUDENT", 102, "AI and DS"),
+                    ("Vaishnavi Giri", "vaishnavi@vit.edu", "student123", "STUDENT", 103, "AI"),
+                    ("Sneha Kale", "sneha@vit.edu", "student123", "STUDENT", 104, "AI and DS"),
+                ]
+
+                for full_name, email, pwd, role, s_ref, dept in default_users:
+                    cursor.execute("SELECT COUNT(*) FROM SYSTEM_USERS WHERE LOWER(EMAIL) = :1", (email.lower(),))
+                    if cursor.fetchone()[0] == 0:
+                        cursor.execute("""
+                            INSERT INTO SYSTEM_USERS (FULL_NAME, EMAIL, PASSWORD, ROLE, STUDENT_REF, DEPARTMENT)
+                            VALUES (:1, :2, :3, :4, :5, :6)
+                        """, (full_name, email, pwd, role, s_ref, dept))
             conn.commit()
     except Exception as e:
         print("Warning during SYSTEM_USERS check:", e)
@@ -91,7 +102,7 @@ def login():
         with get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT USER_ID, FULL_NAME, EMAIL, ROLE, DEPARTMENT
+                    SELECT USER_ID, FULL_NAME, EMAIL, ROLE, DEPARTMENT, STUDENT_REF
                     FROM SYSTEM_USERS
                     WHERE LOWER(EMAIL) = :1 AND PASSWORD = :2
                 """, (email, password))
@@ -105,7 +116,8 @@ def login():
             "name": row[1],
             "email": row[2],
             "role": row[3],
-            "department": row[4]
+            "department": row[4],
+            "student_ref": row[5]
         }
         return jsonify({"success": True, "user": session["user"]})
     except Exception as e:
@@ -135,16 +147,16 @@ def signup():
                 if cursor.fetchone()[0] > 0:
                     return jsonify({"success": False, "error": "This email is already registered."}), 400
 
+                cursor.execute("SELECT NVL(MAX(STUDENT_ID), 100) + 1 FROM STUDENT_RECORDS")
+                next_student_id = cursor.fetchone()[0]
+
                 cursor.execute("""
-                    INSERT INTO SYSTEM_USERS (FULL_NAME, EMAIL, PASSWORD, ROLE, DEPARTMENT)
-                    VALUES (:1, :2, :3, 'STUDENT', :4)
-                """, (full_name, email, password, department))
+                    INSERT INTO SYSTEM_USERS (FULL_NAME, EMAIL, PASSWORD, ROLE, STUDENT_REF, DEPARTMENT)
+                    VALUES (:1, :2, :3, 'STUDENT', :4, :5)
+                """, (full_name, email, password, next_student_id, department))
 
                 cursor.execute("SELECT COUNT(*) FROM STUDENT_RECORDS WHERE LOWER(EMAIL) = :1", (email,))
                 if cursor.fetchone()[0] == 0:
-                    cursor.execute("SELECT NVL(MAX(STUDENT_ID), 100) + 1 FROM STUDENT_RECORDS")
-                    next_student_id = cursor.fetchone()[0]
-
                     cursor.execute("""
                         INSERT INTO STUDENT_RECORDS (STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS)
                         VALUES (:1, :2, :3, :4, :5, :6, :7)
@@ -182,7 +194,7 @@ def forgot_password():
             conn.commit()
         return jsonify({"success": True, "message": "Password reset successfully! Please sign in."})
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/logout", methods=["POST"])
@@ -202,7 +214,7 @@ def get_session():
 # ---------------------------------------------------------
 # 2. Student Records APIs
 #    - ADMIN: Authorized CRUD (Updates STUDENT_RECORDS & chains valid SHA-256 block)
-#    - STUDENT: Unauthorized Update/Delete blocked; tamper flagged in AUDIT_LOG
+#    - STUDENT: Unauthorized Insert/Update/Delete blocked; tamper flagged in AUDIT_LOG
 # ---------------------------------------------------------
 @app.route("/api/students", methods=["GET"])
 @login_required()
@@ -229,38 +241,43 @@ def add_student():
     try:
         with get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("""
-                    INSERT INTO STUDENT_RECORDS (STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS)
-                    VALUES (:1, :2, :3, :4, :5, :6, :7)
-                """, (
-                    data["student_id"],
-                    data["first_name"],
-                    data["last_name"],
-                    data["email"],
-                    data["department"],
-                    float(data["cgpa"]),
-                    data["fee_status"].upper()
-                ))
-
-                if user["role"] == "STUDENT":
+                if user["role"] == "ADMIN":
+                    cursor.execute("""
+                        INSERT INTO STUDENT_RECORDS (STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS)
+                        VALUES (:1, :2, :3, :4, :5, :6, :7)
+                    """, (
+                        data["student_id"],
+                        data["first_name"],
+                        data["last_name"],
+                        data["email"],
+                        data["department"],
+                        float(data["cgpa"]),
+                        data["fee_status"].upper()
+                    ))
+                    conn.commit()
+                    return jsonify({"success": True, "tampered": False, "message": "Student added & SHA-256 block chained."})
+                else:
                     cursor.execute("SELECT MAX(AUDIT_ID) FROM AUDIT_LOG")
-                    latest_id = cursor.fetchone()[0]
+                    target_audit_id = cursor.fetchone()[0]
+
                     attacker = f"{user['name']} ({user['email']})"
+                    tamper_payload = (
+                        f"BLOCKED_UNAUTHORIZED_INSERT[ID={data['student_id']},NAME={data['first_name']} {data['last_name']},"
+                        f"DEPT={data['department']},CGPA={data['cgpa']}]|TAMPERED_BY={attacker}"
+                    )
+
                     cursor.execute("""
                         UPDATE AUDIT_LOG
-                        SET NEW_DATA = SUBSTR(NVL(NEW_DATA, ''), 1, 300) || '|TAMPERED_BY=' || :1,
+                        SET NEW_DATA = SUBSTR(NVL(NEW_DATA, ''), 1, 250) || '|' || :1,
                             RECORD_HASH = 'TAMPERED_' || SUBSTR(RECORD_HASH, 10)
                         WHERE AUDIT_ID = :2
-                    """, (attacker, latest_id))
+                    """, (tamper_payload, target_audit_id))
                     conn.commit()
                     return jsonify({
                         "success": True,
                         "tampered": True,
-                        "message": f"Unauthorized INSERT by {attacker} at Block #{latest_id} (Student #{data['student_id']})!"
+                        "message": f"Tamper Detected! Insert blocked. {attacker} attempted unauthorized insert for Student #{data['student_id']} (Flagged at Block #{target_audit_id})."
                     })
-
-            conn.commit()
-        return jsonify({"success": True, "tampered": False, "message": "Student added & SHA-256 block chained."})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
@@ -407,7 +424,12 @@ def verify_chain():
 
                     target_record = f"Block #{int(latest_tampered)} (Student ID #{rec_pk})"
                     if "TAMPERED_BY=" in new_data_str:
-                        culprit = new_data_str.split("TAMPERED_BY=")[-1].split("|")[0]
+                        actors = []
+                        for part in new_data_str.split("TAMPERED_BY=")[1:]:
+                            name = part.split("|")[0].strip()
+                            if name and name not in actors:
+                                actors.append(name)
+                        culprit = ", ".join(actors)
                     else:
                         culprit = f"Direct DB Privilege User ({db_user})"
 
@@ -471,7 +493,7 @@ def reset_chain():
             with conn.cursor() as cursor:
                 cursor.execute("TRUNCATE TABLE AUDIT_LOG")
                 cursor.execute("TRUNCATE TABLE STUDENT_RECORDS")
-                
+
                 try:
                     cursor.execute("DROP SEQUENCE AUDIT_LOG_SEQ")
                     cursor.execute("CREATE SEQUENCE AUDIT_LOG_SEQ START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE")
@@ -484,18 +506,18 @@ def reset_chain():
                     VALUES (1, 0, '0000000000000000000000000000000000000000000000000000000000000000')
                 """)
 
-                cursor.execute("""
-                    INSERT INTO STUDENT_RECORDS (STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS)
-                    VALUES (101, 'Vedant', 'Joshi', 'vedant@vit.edu', 'AI and DS', 9.50, 'PAID')
-                """)
-                cursor.execute("""
-                    INSERT INTO STUDENT_RECORDS (STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS)
-                    VALUES (102, 'Kalyani', 'Dudhale', 'kalyani@vit.edu', 'AI and DS', 9.20, 'PAID')
-                """)
-                cursor.execute("""
-                    INSERT INTO STUDENT_RECORDS (STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS)
-                    VALUES (103, 'Vaishnavi', 'Giri', 'vaishnavi@vit.edu', 'AI and DS', 9.60, 'PAID')
-                """)
+                seed_students = [
+                    (101, "Vedant", "Joshi", "vedant@vit.edu", "CS", 9.50, "PAID"),
+                    (102, "Kalyani", "Dudhale", "kalyani@vit.edu", "AI and DS", 9.20, "PAID"),
+                    (103, "Vaishnavi", "Giri", "vaishnavi@vit.edu", "AI", 9.60, "PAID"),
+                    (104, "Sneha", "Kale", "sneha@vit.edu", "AI and DS", 9.20, "PENDING"),
+                ]
+
+                for s in seed_students:
+                    cursor.execute("""
+                        INSERT INTO STUDENT_RECORDS (STUDENT_ID, FIRST_NAME, LAST_NAME, EMAIL, DEPARTMENT, CGPA, FEE_STATUS)
+                        VALUES (:1, :2, :3, :4, :5, :6, :7)
+                    """, s)
 
             conn.commit()
         return jsonify({"success": True, "message": "Blockchain ledger reset to clean Genesis state."})

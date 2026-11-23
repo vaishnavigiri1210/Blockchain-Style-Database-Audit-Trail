@@ -5,6 +5,7 @@
 -- ====================================================================
 
 SET SERVEROUTPUT ON;
+SET DEFINE OFF;
 
 -- 1. Test clean chain verification
 DECLARE
@@ -21,9 +22,9 @@ END;
 /
 
 -- 2. Simulate an attacker modifying historical data directly in AUDIT_LOG
--- An attacker attempts to cover their tracks by changing row 1's old fee status to 'PAID'
+-- An attacker attempts to cover their tracks by changing Block #1's fee status from FS=PENDING to FS=PAID
 UPDATE AUDIT_LOG
-SET NEW_DATA = REPLACE(NEW_DATA, 'FEE_STATUS=PENDING', 'FEE_STATUS=PAID')
+SET NEW_DATA = REPLACE(NEW_DATA, 'FS=PENDING', 'FS=PAID')
 WHERE AUDIT_ID = 1;
 
 COMMIT;
